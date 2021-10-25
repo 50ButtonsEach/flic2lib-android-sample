@@ -6,6 +6,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -94,8 +96,12 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onClick(View v) {
                     if (holder.buttonData.button.getConnectionState() == Flic2Button.CONNECTION_STATE_DISCONNECTED) {
-                        holder.buttonData.button.connect();
-                        holder.connectBtn.setText("Disconnect");
+                        try {
+                            holder.buttonData.button.connect();
+                            holder.connectBtn.setText("Disconnect");
+                        } catch (SecurityException e) {
+                            Toast.makeText(holder.connectBtn.getContext(), "Bluetooth permissions have been revoked. Please re-enable for the app in system settings.", Toast.LENGTH_SHORT).show();
+                        }
                     } else {
                         holder.buttonData.button.disconnectOrAbortPendingConnection();
                         holder.connectBtn.setText("Connect");
@@ -214,16 +220,25 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 1) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                scanNewButton(findViewById(R.id.scanNewButton));
+            if (Build.VERSION.SDK_INT < 31 || getApplicationInfo().targetSdkVersion < 31) {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    scanNewButton(findViewById(R.id.scanNewButton));
+                } else {
+                    Toast.makeText(getApplicationContext(), "Scanning needs Location permission, which you have rejected", Toast.LENGTH_SHORT).show();
+                }
             } else {
-                Toast.makeText(getApplicationContext(), "Scanning needs Location permission, which you have rejected", Toast.LENGTH_SHORT).show();
+                if (grantResults.length >= 2 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+                    scanNewButton(findViewById(R.id.scanNewButton));
+                } else {
+                    Toast.makeText(getApplicationContext(), "Scanning needs permissions for finding nearby devices, which you have rejected", Toast.LENGTH_SHORT).show();
+                }
             }
         }
     }
 
-    @TargetApi(23)
+    @TargetApi(31)
     public void scanNewButton(View v) {
         if (isScanning) {
             Flic2Manager.getInstance().stopScan();
@@ -232,10 +247,20 @@ public class MainActivity extends AppCompatActivity {
             ((Button) findViewById(R.id.scanNewButton)).setText("Scan new button");
             ((TextView) findViewById(R.id.scanWizardStatus)).setText("");
         } else {
-            int permissionCheck = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
-            if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-                return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT < 31 || getApplicationInfo().targetSdkVersion < 31) {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+                        return;
+                    }
+                } else {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
+                            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED)
+                    {
+                        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT}, 1);
+                        return;
+                    }
+                }
             }
 
             ((Button) findViewById(R.id.scanNewButton)).setText("Cancel scan");
@@ -257,6 +282,11 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onConnected() {
                     ((TextView) findViewById(R.id.scanWizardStatus)).setText("Connected. Now pairing...");
+                }
+
+                @Override
+                public void onAskToAcceptPairRequest() {
+                    ((TextView) findViewById(R.id.scanWizardStatus)).setText("Please press \"Pair & Connect\" in the system dialog...");
                 }
 
                 @Override

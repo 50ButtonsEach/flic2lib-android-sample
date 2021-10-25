@@ -22,9 +22,14 @@ public class Flic2SampleApplication extends Application {
         Flic2Manager manager = Flic2Manager.initAndGetInstance(getApplicationContext(), new Handler());
 
         // Every time the app process starts, connect to all paired buttons and assign a click listener
-        for (Flic2Button button : manager.getButtons()) {
-            button.connect();
-            listenToButtonWithToast(button);
+        try {
+            for (Flic2Button button : manager.getButtons()) {
+                button.connect();
+                listenToButtonWithToast(button);
+            }
+        } catch (SecurityException e) {
+            // User has revoked the Bluetooth permissions for the app
+            Toast.makeText(getApplicationContext(), "Bluetooth permissions have been revoked. Please re-enable for the app in system settings.", Toast.LENGTH_SHORT).show();
         }
     }
 
